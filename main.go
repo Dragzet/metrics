@@ -30,14 +30,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("init store: %v", err)
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			log.Printf("close store: %v", err)
+		}
+	}()
 
 	srv := &Server{store: store, jwtSecret: secret}
 	mux := http.NewServeMux()
 	srv.registerRoutes(mux)
 
 	log.Printf("server started on %s", addr)
-	if err := http.ListenAndServe(addr, logRequest(mux)); err != nil {
+	if err := http.ListenAndServe(addr, logRequest(corsMiddleware(mux))); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 }
@@ -382,6 +386,45 @@ func logRequest(next http.Handler) http.Handler {
 		start := time.Now()
 		next.ServeHTTP(w, r)
 		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
+	})
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	allowedOrigins := map[string]struct{}{}
+	allowAll := false
+	for _, origin := range strings.Split(envOrDefault("CORS_ORIGIN", "http://localhost:5173,http://localhost:4173"), ",") {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			allowAll = true
+			continue
+		}
+		allowedOrigins[origin] = struct{}{}
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			if allowAll {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				w.Header().Add("Vary", "Origin")
+			} else if _, ok := allowedOrigins[origin]; ok {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Add("Vary", "Origin")
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.Header().Set("Access-Control-Max-Age", "600")
+		}
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
 	})
 }
 

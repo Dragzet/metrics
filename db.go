@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -100,42 +101,81 @@ func (s *Store) seed() error {
 	if err := s.db.QueryRow("SELECT COUNT(1) FROM sensors").Scan(&sensorsCount); err != nil {
 		return err
 	}
-	if sensorsCount == 0 {
-		for _, stmt := range []string{
-			"INSERT INTO sensors(name, location, status) VALUES ('Датчик температуры #1', 'Цех A', 'active')",
-			"INSERT INTO sensors(name, location, status) VALUES ('Датчик влажности #1', 'Склад B', 'active')",
-			"INSERT INTO sensors(name, location, status) VALUES ('Датчик давления #1', 'Линия C', 'maintenance')",
-		} {
-			if _, err := s.db.Exec(stmt); err != nil {
-				return err
-			}
-		}
-	}
-
-	var readingsCount int
-	if err := s.db.QueryRow("SELECT COUNT(1) FROM readings").Scan(&readingsCount); err != nil {
+	if err := s.ensureSeedSensors(); err != nil {
 		return err
 	}
-	if readingsCount == 0 {
-		now := time.Now().UTC()
-		for i := 0; i < 20; i++ {
-			sensorID := int64((i % 2) + 1)
-			value := 20.0 + float64(i)*0.3
-			if sensorID == 2 {
-				value = 45.0 + float64(i)*0.2
+
+	if err := s.ensureSeedReadings(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) ensureSeedSensors() error {
+	for _, stmt := range []string{
+		"INSERT INTO sensors(name, location, status) SELECT 'Датчик температуры #1', 'Цех A', 'active' WHERE NOT EXISTS (SELECT 1 FROM sensors WHERE name = 'Датчик температуры #1')",
+		"INSERT INTO sensors(name, location, status) SELECT 'Датчик влажности #1', 'Склад B', 'active' WHERE NOT EXISTS (SELECT 1 FROM sensors WHERE name = 'Датчик влажности #1')",
+		"INSERT INTO sensors(name, location, status) SELECT 'Датчик давления #1', 'Линия C', 'maintenance' WHERE NOT EXISTS (SELECT 1 FROM sensors WHERE name = 'Датчик давления #1')",
+		"INSERT INTO sensors(name, location, status) SELECT 'Датчик CO2 #1', 'Офис 1', 'active' WHERE NOT EXISTS (SELECT 1 FROM sensors WHERE name = 'Датчик CO2 #1')",
+		"INSERT INTO sensors(name, location, status) SELECT 'Датчик вибрации #1', 'Станок 7', 'inactive' WHERE NOT EXISTS (SELECT 1 FROM sensors WHERE name = 'Датчик вибрации #1')",
+		"INSERT INTO sensors(name, location, status) SELECT 'Датчик напряжения #1', 'Щитовая', 'active' WHERE NOT EXISTS (SELECT 1 FROM sensors WHERE name = 'Датчик напряжения #1')",
+	} {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureSeedReadings() error {
+	now := time.Now().UTC()
+	type seedSeries struct {
+		sensorID int64
+		unit     string
+		base     float64
+		step     float64
+		amp      float64
+		count    int
+		minutes  int
+	}
+
+	series := []seedSeries{
+		{sensorID: 1, unit: "C", base: 20.5, step: 0.18, amp: 0.9, count: 18, minutes: 6},
+		{sensorID: 2, unit: "%", base: 41.0, step: 0.35, amp: 1.8, count: 16, minutes: 7},
+		{sensorID: 3, unit: "kPa", base: 98.3, step: 0.08, amp: 0.25, count: 14, minutes: 8},
+		{sensorID: 4, unit: "ppm", base: 610, step: 4.5, amp: 35, count: 20, minutes: 5},
+		{sensorID: 5, unit: "g", base: 0.12, step: 0.01, amp: 0.05, count: 12, minutes: 10},
+		{sensorID: 6, unit: "V", base: 220.1, step: -0.05, amp: 1.2, count: 18, minutes: 4},
+	}
+
+	for _, cfg := range series {
+		var readingsCount int
+		if err := s.db.QueryRow("SELECT COUNT(1) FROM readings WHERE sensor_id = ?", cfg.sensorID).Scan(&readingsCount); err != nil {
+			return err
+		}
+		if readingsCount > 0 {
+			continue
+		}
+
+		for i := 0; i < cfg.count; i++ {
+			phase := float64(i) / 2.2
+			value := cfg.base + cfg.step*float64(i) + math.Sin(phase)*cfg.amp
+			recordedAt := now.Add(time.Duration(-(cfg.count-i)*cfg.minutes) * time.Minute)
+			if cfg.sensorID == 5 {
+				value = math.Abs(value)
 			}
-			recordedAt := now.Add(time.Duration(-20+i) * time.Minute)
 			if _, err := s.db.Exec(
 				"INSERT INTO readings(sensor_id, value, unit, recorded_at) VALUES (?, ?, ?, ?)",
-				sensorID,
-				value,
-				map[int64]string{1: "C", 2: "%"}[sensorID],
+				cfg.sensorID,
+				math.Round(value*10) / 10,
+				cfg.unit,
 				recordedAt,
 			); err != nil {
 				return err
 			}
 		}
 	}
+
 	return nil
 }
 
