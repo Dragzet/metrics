@@ -1,0 +1,15 @@
+@startuml
+skinparam componentStyle rectangle
+
+actor "Пользователь" as User
+
+component "Web Client\n(HTML/CSS/JS)" as Client
+component "API Server\nGo net/http" as API
+database "SQLite" as DB
+
+User --> Client : login / CRUD / просмотр графика
+Client --> API : HTTP + JSON + Bearer JWT
+API --> DB : SQL (users, sensors, readings)
+
+@enduml
+
