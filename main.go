@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"embed"
 	"encoding/json"
 	"errors"
 	"log"
@@ -12,9 +11,6 @@ import (
 	"strings"
 	"time"
 )
-
-//go:embed web/*
-var webFS embed.FS
 
 type Server struct {
 	store     *Store
@@ -47,8 +43,6 @@ func main() {
 }
 
 func (s *Server) registerRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/", s.handleIndex)
-	mux.Handle("/web/", http.StripPrefix("/web/", http.FileServer(http.FS(webFS))))
 	mux.HandleFunc("/healthz", s.handleHealth)
 
 	mux.HandleFunc("/api/login", s.handleLogin)
@@ -82,21 +76,6 @@ func (s *Server) withAuth(next func(http.ResponseWriter, *http.Request, *Claims)
 		}
 		next(w, r, claims)
 	}
-}
-
-func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	data, err := webFS.ReadFile("web/index.html")
-	if err != nil {
-		http.Error(w, "unable to render index", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
