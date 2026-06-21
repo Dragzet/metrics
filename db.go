@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -72,14 +73,22 @@ func (s *Store) seed() error {
 		return err
 	}
 	if usersCount == 0 {
+		adminPwd := os.Getenv("SEED_ADMIN_PASSWORD")
+		operatorPwd := os.Getenv("SEED_OPERATOR_PASSWORD")
+		viewerPwd := os.Getenv("SEED_VIEWER_PASSWORD")
+
+		if adminPwd == "" || operatorPwd == "" || viewerPwd == "" {
+			return fmt.Errorf("seed passwords required: set SEED_ADMIN_PASSWORD, SEED_OPERATOR_PASSWORD, SEED_VIEWER_PASSWORD environment variables")
+		}
+
 		seedUsers := []struct {
 			username string
 			password string
 			role     string
 		}{
-			{"admin", "admin123", RoleAdmin},
-			{"operator", "operator123", RoleOperator},
-			{"viewer", "viewer123", RoleViewer},
+			{"admin", adminPwd, RoleAdmin},
+			{"operator", operatorPwd, RoleOperator},
+			{"viewer", viewerPwd, RoleViewer},
 		}
 		for _, u := range seedUsers {
 			hash, err := HashPassword(u.password)

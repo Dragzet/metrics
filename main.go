@@ -20,7 +20,10 @@ type Server struct {
 func main() {
 	addr := envOrDefault("APP_ADDR", ":8080")
 	dbPath := envOrDefault("DB_PATH", "file:metrics.db?_pragma=foreign_keys(1)")
-	secret := envOrDefault("JWT_SECRET", "dev-secret-change-me")
+	secret := os.Getenv("JWT_SECRET")
+	if strings.TrimSpace(secret) == "" {
+		log.Fatalf("JWT_SECRET environment variable is required")
+	}
 
 	store, err := NewStore(dbPath)
 	if err != nil {

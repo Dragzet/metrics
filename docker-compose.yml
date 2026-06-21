@@ -3,9 +3,12 @@ services:
   app:
     build: .
     ports:
-      - "8080:8080"
+      - "8080:80"
     environment:
       APP_ADDR: ":8080"
       DB_PATH: "file:metrics.db?_pragma=foreign_keys(1)"
-      JWT_SECRET: "compose-dev-secret"
+      JWT_SECRET: "${JWT_SECRET}"
+      SEED_ADMIN_PASSWORD: "${SEED_ADMIN_PASSWORD}"
+      SEED_OPERATOR_PASSWORD: "${SEED_OPERATOR_PASSWORD}"
+      SEED_VIEWER_PASSWORD: "${SEED_VIEWER_PASSWORD}"
 
